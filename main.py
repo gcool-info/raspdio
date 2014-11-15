@@ -17,7 +17,7 @@ print "Rasdio V0"
 delta = 30
 
 morningStart = datetime.datetime(year=2014, month=11, day=15, hour=8, minute=0, second=0, microsecond=0)
-eveningStart = datetime.datetime(year=2014, month=11, day=15, hour=19, minute=0, second=0, microsecond=0)
+eveningStart = datetime.datetime(year=2014, month=11, day=15, hour=17, minute=50, second=0, microsecond=0)
 morningEnd = morningStart + timedelta(minutes=delta)
 eveningEnd = eveningStart + timedelta(minutes=delta)
  
@@ -25,7 +25,7 @@ eveningEnd = eveningStart + timedelta(minutes=delta)
 os.system("sudo modprobe snd_bcm2835")
 #os.system("sudo mpd")
 os.system("sudo mpc clear")
-os.system("sudo mpc add http://208.53.164.181:80")
+os.system("sudo mpc add http://2QMTL0.akacast.akamaistream.net/7/953/177387/v1/rc.akacast.akamaistream.net/2QMTL0")
 
 isPlaying = False
 
@@ -42,7 +42,7 @@ while True:
 
 	elif currentTime > eveningStart.time() and currentTime < eveningEnd.time():
         	if not isPlaying:
-			os.system("sudo mpc volume 70")
+			os.system("sudo mpc volume 80")
                 	os.system("sudo mpc play 1")
 			isPlaying = True
 			print "Nighty nighty...!"
