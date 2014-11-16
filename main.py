@@ -1,14 +1,26 @@
-# this file is run using this command: "sudo python radio.py"
-# python must be installed, and you must call the command while
-# you are in the same folder as the file
-
 #imports
 import gspread
 from time import sleep
 import os
+import sys
 import subprocess
 import datetime
 from datetime import timedelta
+import urllib2
+
+# Check if internet is up
+def internet_on():
+    try:
+	# http://74.125.228.100 is a server for google
+        response=urllib2.urlopen('http://74.125.228.100',timeout=1)
+        return True
+    except urllib2.URLError as err: pass
+    return False
+
+while not internet_on():
+	sleep(60)	
+
+print "Wifi is on"
 
 # Set global variables
 delta = 30
@@ -68,7 +80,7 @@ while True:
 	
 	if currentTime > morningStart.time() and currentTime < morningEnd.time():
 		if not isPlaying:
-			os.system("sudo mpc volume 100")
+			os.system("sudo mpc volume 90")
 			os.system("sudo mpc play 1")
 			isPlaying = True
 			print "Rise & shine!"
@@ -88,4 +100,4 @@ while True:
 	#sleep for a bit - 1min
 	sleep(60)
 
-print "Rasdio is playing...!"
+os.unlink(pidfile)
