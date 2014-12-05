@@ -20,8 +20,8 @@ volDiff = 20 			# The difference in volume between sleep & wake
 ######################################### Global Variables ############################################## 
 connectionAttempts = 0
 isPlaying = False
-currVol = 0
-durarion = 30 
+currVol = 100
+duration = 30 
 wakeTime = 0
 sleepTime = 0
 
@@ -98,7 +98,7 @@ def gConnect():
 def startMusic(volume):
 	
 	global isPlaying
-
+	print volume
 	# Set-up the volume	
 	os.system("sudo mpc volume " + volume)
 	
@@ -146,11 +146,8 @@ def checkVolume():
 
 	if (abs(currVol - newVol) > tolerence):
 		# Set the volume on the MPC
-		os.system("sudo mpc volume " + str(newVol))
-
-		# Update the global variable
+		os.system("sudo mpc volume " + str(int(newVol)))
 		currVol = newVol
-		print newVol
 		
 
 # read SPI data from MCP3008 chip, 8 possible adc's (0 thru 7) - From adafruit tutorial
@@ -204,96 +201,38 @@ GPIO.add_event_detect(17,GPIO.FALLING, callback=buttonPress, bouncetime=100)
 
 
 #### Main Loop ####
-while True:				
-	if isPlaying:
-		checkVolume()
-
-	#gConnect()
-
-'''
-# Check if internet is up
-def internet_on():
-    try:
-	# http://74.125.228.100 is a server for google
-        response=urllib2.urlopen('http://74.125.228.100')
-        return True
-    except urllib2.URLError as err: pass
-    return False
-
-while not internet_on():
-	sleep(60)	
-
-print "Wifi is on"
-
-# Set global variables
-delta = 30
-wakeHour = 8
-wakeMin = 0
-sleepHour = 23
-sleepMin = 0
-morningStart = datetime.datetime(year=2014, month=11, day=15, hour=8, minute=0, second=0, microsecond=0)
-eveningStart = datetime.datetime(year=2014, month=11, day=15, hour=17, minute=50, second=0, microsecond=0)
-morningEnd = morningStart + timedelta(minutes=delta)
-eveningEnd = eveningStart + timedelta(minutes=delta)
-
-# GPIO Pins
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(4, GPIO.OUT)
-GPIO.setup(17, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.output(4, GPIO.LOW)
-
-################### Google Docs Section ##############################
-
-def buttonPress(pin):
-	global isPlaying
-
-	if not isPlaying:
-            	GPIO.output(4, GPIO.HIGH)
-		os.system("sudo mpc play 1")
-		isPlaying = True		
-        else:
-            	GPIO.output(4, GPIO.LOW)        
-		os.system("sudo mpc pause")
-		isPlaying = False
-	 
-# make sure the audio card is started, as well as MPD
-os.system("sudo modprobe snd_bcm2835")
-os.system("sudo mpc clear")
-os.system("sudo mpc add http://2QMTL0.akacast.akamaistream.net/7/953/177387/v1/rc.akacast.akamaistream.net/2QMTL0")
-os.system("sudo mpc volume 90")
-
-isPlaying = False
-
-# Add an interrupt fot the button press
-GPIO.add_event_detect(17,GPIO.FALLING, callback=buttonPress, bouncetime=100)
-
-print "############################ Rasdio Playing! ####################"
-
-while True:
+while True:	
+	
 	# Get the current time
 	currentTime = datetime.datetime.now().time()
-
-	#Get the google doc parameters
-	connectToDocs()	
-	
-	if currentTime > morningStart.time() and currentTime < morningEnd.time():
-		if not isPlaying:
-			os.system("sudo mpc play 1")
-			isPlaying = True
-			GPIO.output(4, GPIO.HIGH)
-			print "Rise & shine!"
-
-	elif currentTime > eveningStart.time() and currentTime < eveningEnd.time():
-        	if not isPlaying:
-        	       	os.system("sudo mpc play 1")
-			isPlaying = True
-			GPIO.output(4, GPIO.HIGH)
-			print "Nighty nighty...!"
-
+			
+	if isPlaying:
+		
+		checkVolume()		
 	else:
-		if isPlaying:
-			os.system("sudo mpc pause")
-			#GPIO.output(4, GPIO.LOW)
-			isPlaying = False
-			print "Check again...!"
-'''
+		# Connect to the gDoc
+		gConnect()
+
+		# Set the end times
+		sleepEnd = sleepTime + timedelta(minutes=duration)
+		wakeEnd = wakeTime +  timedelta(minutes=duration)		
+
+		# Check if we are waking up or sleeping
+		if currentTime > wakeTime.time() and currentTime < wakeEnd.time():
+			
+			# Start the music with the volume for the waking up
+			startMusic(str(currVol))
+
+		elif currentTime > sleepTime.time() and currentTime < sleepEnd.time():
+
+			# Start the music with the volume for sleeping
+
+			# Make sure the sleep volume isn't below 0
+			if currVol < volDiff:
+				sleepVol = 0
+			else:
+				sleepVol = currVol
+
+			startMusic(str(sleepVol))
+			print "Night"
+
