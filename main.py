@@ -12,18 +12,20 @@ import RPi.GPIO as GPIO
 
 ############################################ Definitions ##############################################  
 streamURL = "http://2QMTL0.akacast.akamaistream.net/7/953/177387/v1/rc.akacast.akamaistream.net/2QMTL0"
-gDocURL = "1iO9__C7b31zWULhzjJbyP4z-LmNbKU_2CnkXlfL1QnA"
-gDocLogin = "george.koulouris1@gmail.com"
-gDocPSW = "CoolOuris=+"
+gDocURL = "YOUR_GDOC_KEY"
+gDocLogin = "YOUR_GMAIL"
+gDocPSW = "YOUR_GMAIL_PASSWORD"
 volDiff = 20 			# The difference in volume between sleep & wake
 
 ######################################### Global Variables ############################################## 
-connectionAttempts = 0
+connectionAttempts = 0		# The number of times we have tried to connect to gDocs & failed
 isPlaying = False
-currVol = 100
-duration = 30 
-wakeTime = 0
-sleepTime = 0
+currVol = 100			# The current volume (as a percentage)
+duration = 30			# The play duration in min
+wakeTime = 0			# The wake up time (created by the gDoc)
+sleepTime = 0			# The sleep time (created by the gDoc)
+gDocsInterrupted = False	# The button interrupted music played at the specified time (from the gDoc)
+gDocsPlaying = False		# Music is playing because of the gDoc
 
 ######################################### Pin Defimitions ############################################## 
 
@@ -53,13 +55,14 @@ potentiometer_adc = 7;
 # Connection to Gdocs
 def gConnect():
 	
-	global gDocLogin, gDocPSW, wakeTime, sleepTime, duration	
+	global gDocLogin, gDocPSW, wakeTime, sleepTime, duration, connectionAttempts	
 
 	# Login with your Google account
 	gc = gspread.Client(auth=(gDocLogin, gDocPSW))
 	
 	while True:	
 		try:
+
 			# Login & Connect to the spreadsheet
 			gc.login()
 			sht = gc.open_by_key(gDocURL)
@@ -81,6 +84,7 @@ def gConnect():
 	
 			break
 		except:
+
 			print "Could not connect to GDocs.  Retrying..."
 
 			# Update the connection attempts variable
@@ -94,40 +98,80 @@ def gConnect():
 			sleep(10)
 
 
+# Function to resume checking gDocs
+def resumeGDocs():
+	global gDocsInterrupted
+
+	gDocsInterrupted = False
+
+
+
+# Stop playing music
+def stopMusic():
+	
+	global isPlaying, startTimer		
+	
+	os.system("sudo mpc pause")
+
+	# For some reason, invoking "os.system" destroys the interrupt. So I recreate it
+	# If you evern find-out why, email me (george.koulouris1@gmail.com) ! I'm curious... 	
+	GPIO.remove_event_detect(17)
+	GPIO.add_event_detect(17,GPIO.FALLING, callback=buttonPress, bouncetime=100)
+
+	isPlaying = False
+	
+	# Switch-off the button
+	GPIO.output(4, GPIO.LOW)
+
+	# Cancel the start music timer
+	startTimer.cancel()
+
+
 # Start playing music
 def startMusic(volume):
 	
-	global isPlaying
-	print volume
+	global isPlaying, startTimer, duration
+	
 	# Set-up the volume	
 	os.system("sudo mpc volume " + volume)
 	
 	# Start Playing
 	os.system("sudo mpc play 1")
 	isPlaying = True
+
+	# For some reason, invoking "os.system" destroys the interrupt. So I recreate it
+	# If you evern find-out why, email me (george.koulouris1@gmail.com) ! I'm curious... 	
+	GPIO.remove_event_detect(17)
+	GPIO.add_event_detect(17,GPIO.FALLING, callback=buttonPress, bouncetime=100)
+
 	
 	# Light-up the button
 	GPIO.output(4, GPIO.HIGH)
 
-# Stop playing music
-def stopMusic():
-	
-	global isPlaying
-	
-	os.system("sudo mpc pause")
-	isPlaying = False
-	
-	# Switch-off the button
-	GPIO.output(4, GPIO.LOW)
+	# Create a start music timer to stop playing music after "duration"
+	startTimer = Timer(duration*60, stopMusic)
+	startTimer.start()	
+
+
 
 # Button Press interrupt
 def buttonPress(pin):
-	global isPlaying, currVol
+	global isPlaying, currVol, gDocsInterrupted, gDocsPlaying, stopTimer
 
 	if not isPlaying:
-            	startMusic(str(currVol))		
+            	startMusic(str(currVol))
         else:
             	stopMusic()
+	
+		# if the gDoc requested the play, then  we need to stop it for "duration"
+		# we do this by setting up a timer
+		if gDocsPlaying:
+			gDocsInterrupted = True
+			gDocsPlaying = False
+			stopTimer = Timer(duration*60, resumeGDocs)
+			stopTimer.start()	
+
+	
 
 
 # Check the poetentiometer and set the volume if change
@@ -146,7 +190,14 @@ def checkVolume():
 
 	if (abs(currVol - newVol) > tolerence):
 		# Set the volume on the MPC
-		os.system("sudo mpc volume " + str(int(newVol)))
+		os.system("mpc volume " + str(int(newVol)))
+	
+		# For some reason, invoking "os.system" destroys the interrupt. So I recreate it
+		# If you evern find-out why, email me (george.koulouris1@gmail.com) ! I'm curious... 	
+		GPIO.remove_event_detect(17)
+		GPIO.add_event_detect(17,GPIO.FALLING, callback=buttonPress, bouncetime=100)
+
+
 		currVol = newVol
 		
 
@@ -154,33 +205,33 @@ def checkVolume():
 def readadc(adcnum, clockpin, mosipin, misopin, cspin):
         if ((adcnum > 7) or (adcnum < 0)):
                 return -1
-        GPIO.output(cspin, True)
+        GPIO.output(cspin, GPIO.HIGH)
 
-        GPIO.output(clockpin, False)  # start clock low
-        GPIO.output(cspin, False)     # bring CS low
+        GPIO.output(clockpin, GPIO.LOW)  # start clock low
+        GPIO.output(cspin, GPIO.LOW)     # bring CS low
 
         commandout = adcnum
         commandout |= 0x18  # start bit + single-ended bit
         commandout <<= 3    # we only need to send 5 bits here
         for i in range(5):
                 if (commandout & 0x80):
-                        GPIO.output(mosipin, True)
+                        GPIO.output(mosipin, GPIO.HIGH)
                 else:
-                        GPIO.output(mosipin, False)
+                        GPIO.output(mosipin, GPIO.LOW)
                 commandout <<= 1
-                GPIO.output(clockpin, True)
-                GPIO.output(clockpin, False)
+                GPIO.output(clockpin, GPIO.HIGH)
+                GPIO.output(clockpin, GPIO.LOW)
 
         adcout = 0
         # read in one empty bit, one null bit and 10 ADC bits
         for i in range(12):
-                GPIO.output(clockpin, True)
-                GPIO.output(clockpin, False)
+                GPIO.output(clockpin, GPIO.HIGH)
+                GPIO.output(clockpin, GPIO.LOW)
                 adcout <<= 1
                 if (GPIO.input(misopin)):
                         adcout |= 0x1
 
-        GPIO.output(cspin, True)
+        GPIO.output(cspin, GPIO.HIGH)
         
         adcout >>= 1       # first bit is 'null' so drop it
         return adcout
@@ -191,6 +242,7 @@ def readadc(adcnum, clockpin, mosipin, misopin, cspin):
 
 # Set-up audio MPD
 os.system("sudo modprobe snd_bcm2835")
+os.system("sudo mpc pause")
 os.system("sudo mpc clear")
 
 # Add the stream
@@ -199,40 +251,64 @@ os.system("sudo mpc add " + streamURL)
 # Add an interrupt fot the button press
 GPIO.add_event_detect(17,GPIO.FALLING, callback=buttonPress, bouncetime=100)
 
+running = True
 
 #### Main Loop ####
-while True:	
+while running:	
 	
-	# Get the current time
-	currentTime = datetime.datetime.now().time()
+	try:
+		# Get the current time
+		currentTime = datetime.datetime.now().time()
 			
-	if isPlaying:
+		if isPlaying:
 		
-		checkVolume()		
-	else:
-		# Connect to the gDoc
-		gConnect()
+			checkVolume()		
+			sleep(0.5)
 
-		# Set the end times
-		sleepEnd = sleepTime + timedelta(minutes=duration)
-		wakeEnd = wakeTime +  timedelta(minutes=duration)		
+		elif not gDocsInterrupted:
 
-		# Check if we are waking up or sleeping
-		if currentTime > wakeTime.time() and currentTime < wakeEnd.time():
+			# Connect to the gDoc
+			gConnect()
+
+			# Set the end times
+			sleepEnd = sleepTime + timedelta(minutes=duration)
+			wakeEnd = wakeTime +  timedelta(minutes=duration)		
+
+			# Check if we are waking up or sleeping
+			if currentTime > wakeTime.time() and currentTime < wakeEnd.time():
 			
-			# Start the music with the volume for the waking up
-			startMusic(str(currVol))
+				# Start the music with the volume for the waking up
+				startMusic(str(currVol))
+				gDocsPlaying = True	
+	
+			elif currentTime > sleepTime.time() and currentTime < sleepEnd.time():
 
-		elif currentTime > sleepTime.time() and currentTime < sleepEnd.time():
+				# Start the music with the volume for sleeping
 
-			# Start the music with the volume for sleeping
+				# Make sure the sleep volume isn't below 0
+				if currVol < volDiff:
+					sleepVol = 0
+				else:
+					sleepVol = currVol
 
-			# Make sure the sleep volume isn't below 0
-			if currVol < volDiff:
-				sleepVol = 0
-			else:
-				sleepVol = currVol
+				startMusic(str(sleepVol))
+				gDocsPlaying = True
+				
+		
+			# Sleep for 5 minutes
+			for i in range(60*5):
+		
+				# If the button is pressed, then exit sleep and go into the "isPlaying" loop
+				if isPlaying:
+					break
+				
+				gDocsPlaying = False
+				#sleep(1)
+		else:
+			sleep(1)
 
-			startMusic(str(sleepVol))
-			print "Night"
+	except KeyboardInterrupt:
+		running = False
 
+
+GPIO.cleanup()
